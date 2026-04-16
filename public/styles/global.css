@@ -460,6 +460,32 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   display: flex;
   flex-direction: column;
   gap: 2px;
+  overflow-y: auto;
+  max-height: 650px; /* Aligns with average player + meta height */
+  padding: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--amber-dim) transparent;
+}
+
+.queue-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.queue-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.queue-list::-webkit-scrollbar-thumb {
+  background: var(--border-mid);
+  border-radius: 10px;
+}
+
+.queue-list:hover::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+}
+
+.queue-list::-webkit-scrollbar-thumb:hover {
+  background: var(--amber);
 }
 
 .queue-item {
@@ -595,6 +621,8 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
+  position: sticky;
+  top: 24px;
 }
 
 .sidebar-header {

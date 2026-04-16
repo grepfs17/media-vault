@@ -109,6 +109,65 @@ import Base from "../layouts/Base.astro";
         return `${m}:${String(s).padStart(2, "0")}`;
     }
 
+    async function updateAudioMetadata(path: string) {
+        const metaRow = document.getElementById("audio-metadata-row");
+        const artImg = document.getElementById("album-art") as HTMLImageElement;
+        const descRow = document.getElementById("meta-description-row");
+        const descEl = document.getElementById("meta-description");
+
+        if (!metaRow || !artImg || !descEl || !descRow) return;
+
+        // Clean up first
+        metaRow.style.display = "none";
+        artImg.style.display = "none";
+        artImg.src = "";
+        descEl.innerHTML = "";
+        descRow.style.display = "none";
+
+        const ext = path.match(/\.[^.]+$/)?.[0]?.toLowerCase() ?? "";
+        const musicExts = [".mp3", ".m4a", ".flac", ".ogg", ".opus", ".wav"];
+        if (!musicExts.includes(ext)) return;
+
+        try {
+            const res = await fetch(
+                `/api/metadata?path=${encodeURIComponent(path)}`,
+            );
+            if (!res.ok) return;
+            const data = await res.json();
+
+            let hasArt = false;
+            let hasDesc = false;
+
+            if (data.hasArt) {
+                artImg.onerror = () => {
+                    artImg.style.display = "none";
+                };
+                artImg.src = `/api/album-art?path=${encodeURIComponent(path)}&t=${Date.now()}`;
+                artImg.style.display = "block";
+                hasArt = true;
+            } else {
+                artImg.style.display = "none";
+            }
+
+            if (data.comment) {
+                const commentText = Array.isArray(data.comment)
+                    ? data.comment.join("\n")
+                    : String(data.comment);
+                if (commentText.trim()) {
+                    descEl.textContent = commentText;
+                    descRow.style.display = "flex";
+                    hasDesc = true;
+                }
+            }
+
+            if (hasArt) {
+                metaRow.style.display = "flex";
+            }
+        } catch (e) {
+            console.warn("Metadata fetch failed", e);
+        }
+    }
+
     function renderPlayer(
         path: string,
         isAudio: boolean,
@@ -118,8 +177,8 @@ import Base from "../layouts/Base.astro";
         const name = fileName(path);
         const currentItem = queue.find((i) => i.path === path);
         const mediaEl = isAudio
-            ? `<audio id="media-el" controls preload="metadata" src="${streamUrl(path)}" style="width:100%;min-height:60px;background:#000;border-radius:8px;"></audio>`
-            : `<video id="media-el" controls preload="metadata" src="${streamUrl(path)}" style="width:100%;max-height:75dvh;" playsinline></video>`;
+            ? `<audio id="media-el" controls autoplay preload="metadata" src="${streamUrl(path)}" style="width:100%;min-height:60px;background:#000;border-radius:8px;"></audio>`
+            : `<video id="media-el" controls autoplay preload="metadata" src="${streamUrl(path)}" style="width:100%;max-height:75dvh;" playsinline></video>`;
 
         const queueHtml =
             queue.length > 0
@@ -163,6 +222,11 @@ import Base from "../layouts/Base.astro";
       <div class="player-layout fade-in fade-in-delay-2">
         <div class="player-main">
           <div class="player-wrapper">
+            <div id="audio-metadata-row" class="audio-metadata-row" style="display:none;">
+              <div class="album-art-container">
+                <img id="album-art" class="album-art" src="" alt="Album Art" style="display:none;" />
+              </div>
+            </div>
             ${mediaEl}
           </div>
           <dl class="file-meta" id="file-meta" aria-label="File metadata">
@@ -191,6 +255,10 @@ import Base from "../layouts/Base.astro";
               <dt>Filename</dt>
               <dd id="meta-filename" class="meta-filename">${name}</dd>
             </div>
+            <div class="file-meta-item" id="meta-description-row" style="display:none; flex: 1 1 100%;">
+              <dt>Description</dt>
+              <dd id="meta-description" class="audio-description"></dd>
+            </div>
           </dl>
         </div>
         ${queueHtml}
@@ -199,6 +267,7 @@ import Base from "../layouts/Base.astro";
 
         attachQueueHandlers(path);
         attachMediaMetaListener();
+        updateAudioMetadata(path);
     }
 
     function attachMediaMetaListener() {
@@ -338,6 +407,7 @@ import Base from "../layouts/Base.astro";
 
                         // Re-attach metadata listener after src swap
                         attachMediaMetaListener();
+                        updateAudioMetadata(newPath);
                     }
                 };
 

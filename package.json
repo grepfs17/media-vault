@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@astrojs/node": "^10.0.5",
-    "astro": "^6.1.7"
+    "astro": "^6.1.7",
+    "music-metadata": "^11.12.3"
   }
 }

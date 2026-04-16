@@ -231,6 +231,21 @@ import Base from "../layouts/Base.astro";
 		const sizeStr = item.size ? formatSize(item.size) : "";
 		const extStr = item.ext ? item.ext.replace(".", "").toUpperCase() : "";
 
+		let thumbContent = `<span aria-hidden="true">${icon}</span>`;
+
+		if (item.type === "audio") {
+			const artUrl = `/api/album-art?path=${encodeURIComponent(item.path)}&t=${item.mtime ?? ""}`;
+			thumbContent = `
+        <img src="${artUrl}" 
+             alt="" 
+             class="card-art" 
+             loading="lazy" 
+             style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity 0.3s;" 
+             onload="this.style.opacity='1'; this.nextElementSibling.style.opacity='0';" />
+        <span aria-hidden="true" style="transition:opacity 0.3s;">${icon}</span>
+      `;
+		}
+
 		return `
       <li class="media-card"
           role="button"
@@ -239,7 +254,7 @@ import Base from "../layouts/Base.astro";
           data-item-path="${item.path}"
           data-item-type="${item.type}">
         <div class="card-thumb">
-          <span aria-hidden="true">${icon}</span>
+          ${thumbContent}
           <span class="type-badge ${item.type}">${label}</span>
         </div>
         <div class="card-body">

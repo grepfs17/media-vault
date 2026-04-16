@@ -625,3 +625,63 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
 .fade-in-delay-1 { animation-delay: 80ms; }
 .fade-in-delay-2 { animation-delay: 160ms; }
 .fade-in-delay-3 { animation-delay: 240ms; }
+
+/* ── Audio Metadata ──────────────────────────── */
+.audio-metadata-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  margin: 32px auto;
+  text-align: center;
+  width: 100%;
+  padding: 0 24px;
+}
+
+.album-art-container {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.album-art {
+  width: min(100%, 340px);
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: var(--radius-lg);
+  box-shadow: 
+    0 30px 60px rgba(0,0,0,0.7),
+    0 0 0 1px var(--border);
+  transition: transform var(--dur-mid) var(--ease-out);
+  background: var(--bg-elevated);
+}
+
+.album-art:hover {
+  transform: translateY(-4px) scale(1.01);
+}
+
+.audio-description {
+  max-width: 100%;
+  width: 100%;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  text-align: left;
+  white-space: pre-wrap !important;
+  word-break: break-word;
+  padding: 4px 0;
+  overflow: visible !important;
+}
+
+.audio-description a {
+  color: var(--amber);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  transition: color var(--dur-fast), opacity var(--dur-fast);
+}
+
+.audio-description a:hover {
+  color: var(--amber-light);
+  opacity: 0.8;
+}

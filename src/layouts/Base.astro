@@ -1,4 +1,5 @@
 ---
+import { ClientRouter } from "astro:transitions";
 interface Props {
     title?: string;
     description?: string;
@@ -15,6 +16,7 @@ const { title = "Media Vault", description = "Your personal media library" } =
         <meta name="description" content={description} />
         <title>{title}</title>
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <ClientRouter />
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -26,7 +28,7 @@ const { title = "Media Vault", description = "Your personal media library" } =
 
         <link rel="stylesheet" href="/styles/global.css" />
     </head>
-    <body>
+    <body class={Astro.url.pathname === "/player" ? "is-player-page" : ""}>
         <header class="site-header">
             <a href="/" class="logo" aria-label="Media Vault Home">
                 <span class="logo-icon">⬡</span>
@@ -43,8 +45,102 @@ const { title = "Media Vault", description = "Your personal media library" } =
             <slot />
         </main>
 
+        <div id="persistent-player-root" transition:persist>
+            <div id="persistent-media-slot"></div>
+            <div id="persistent-mini-player" class="mini-player hidden">
+                <img id="mini-art" class="mini-art" src="/favicon.svg" alt="" />
+                <div class="mini-info">
+                    <span id="mini-title" class="mini-title"
+                        >Nothing playing</span
+                    >
+                    <span id="mini-subtitle" class="mini-subtitle"
+                        >Media Vault</span
+                    >
+                </div>
+                <div class="mini-controls">
+                    <button
+                        id="mini-play-pause"
+                        class="mini-btn play-pause"
+                        aria-label="Play/Pause"
+                    >
+                        <span class="icon">⏵</span>
+                    </button>
+                    <a
+                        href="/player"
+                        id="mini-expand"
+                        class="mini-btn"
+                        aria-label="Expand player"
+                    >
+                        <span class="icon">⤢</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+
         <footer class="site-footer">
             <span>Media Vault &mdash; local media server</span>
         </footer>
+
+        <script>
+            // Global state for the persistent player
+            document.addEventListener("astro:page-load", () => {
+                const isPlayerPage = window.location.pathname === "/player";
+                const miniPlayer = document.getElementById(
+                    "persistent-mini-player",
+                );
+                const playPauseBtn = document.getElementById("mini-play-pause");
+                const mediaEl = document.getElementById(
+                    "media-el",
+                ) as HTMLMediaElement;
+
+                // Show/hide mini player if playing and not on player page
+                const updateMiniVisibility = () => {
+                    if (!isPlayerPage && mediaEl && !mediaEl.paused) {
+                        miniPlayer?.classList.remove("hidden");
+                    } else if (isPlayerPage) {
+                        miniPlayer?.classList.add("hidden");
+                    }
+                };
+
+                // Sync play/pause button icon
+                const updateIcon = () => {
+                    if (playPauseBtn) {
+                        const icon = playPauseBtn.querySelector(".icon");
+                        if (icon)
+                            icon.textContent = mediaEl?.paused ? "⏵" : "⏸";
+                    }
+                };
+
+                if (mediaEl) {
+                    mediaEl.addEventListener("play", () => {
+                        updateMiniVisibility();
+                        updateIcon();
+                    });
+                    mediaEl.addEventListener("pause", () => {
+                        updateIcon();
+                    });
+                    updateIcon();
+                    updateMiniVisibility();
+                }
+
+                if (playPauseBtn) {
+                    playPauseBtn.onclick = () => {
+                        if (!mediaEl) return;
+                        if (mediaEl.paused) mediaEl.play();
+                        else mediaEl.pause();
+                    };
+                }
+
+                // Update navigation active states
+                document.querySelectorAll(".nav-link").forEach((link) => {
+                    const href = link.getAttribute("href");
+                    if (href === window.location.pathname) {
+                        link.classList.add("active");
+                    } else {
+                        link.classList.remove("active");
+                    }
+                });
+            });
+        </script>
     </body>
 </html>

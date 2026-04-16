@@ -15,15 +15,13 @@ import Base from "../layouts/Base.astro";
 </Base>
 
 <script>
+    import { navigate } from "astro:transitions/client";
+
     /* ============================================================
-     Player page
-     URL params:
-       ?path=<url-encoded sub-path>        — file to play
-       ?queue=<url-encoded folder sub-path> — folder to build queue from
+     Player page logic with persistent playback
      ============================================================ */
 
     type MediaType = "video" | "audio" | "directory";
-
     interface MediaItem {
         name: string;
         path: string;
@@ -32,11 +30,16 @@ import Base from "../layouts/Base.astro";
         size?: number;
     }
 
-    const root = document.getElementById("player-root")!;
-
-    const params = new URLSearchParams(window.location.search);
-    const filePath = params.get("path") ?? "";
-    const queuePath = params.get("queue") ?? "";
+    const audioExts = new Set([
+        ".mp3",
+        ".flac",
+        ".aac",
+        ".ogg",
+        ".opus",
+        ".wav",
+        ".m4a",
+        ".wma",
+    ]);
 
     function formatSize(bytes: number): string {
         if (bytes < 1_048_576) return (bytes / 1_024).toFixed(1) + " KB";
@@ -63,109 +66,58 @@ import Base from "../layouts/Base.astro";
         return path.split("/").pop() ?? path;
     }
 
-    if (!filePath) {
-        root.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">🎬</div>
-        <h1 class="empty-title">Nothing selected</h1>
-        <p class="empty-desc">Go to the <a href="/" style="color:var(--amber)">Library</a> and pick a file to play.</p>
-      </div>`;
-    } else {
-        // Detect type from extension
-        const audioExts = new Set([
-            ".mp3",
-            ".flac",
-            ".aac",
-            ".ogg",
-            ".opus",
-            ".wav",
-            ".m4a",
-            ".wma",
-        ]);
+    function getMediaEl(isAudio: boolean): HTMLMediaElement {
+        let el = document.getElementById("media-el") as HTMLMediaElement;
+        const tag = isAudio ? "AUDIO" : "VIDEO";
+
+        if (!el || el.tagName !== tag) {
+            const oldEl = el;
+            el = document.createElement(
+                isAudio ? "audio" : "video",
+            ) as HTMLMediaElement;
+            el.id = "media-el";
+            el.controls = true;
+            el.autoplay = true;
+            el.style.width = "100%";
+            if (!isAudio) (el as HTMLVideoElement).style.maxHeight = "75dvh";
+            el.setAttribute("preload", "metadata");
+            el.setAttribute("playsinline", "");
+
+            if (oldEl) oldEl.replaceWith(el);
+        }
+        return el;
+    }
+
+    function initPage() {
+        const root = document.getElementById("player-root");
+        if (!root) return;
+
+        const params = new URLSearchParams(window.location.search);
+        const filePath = params.get("path") ?? "";
+        const queuePath = params.get("queue") ?? "";
+
+        if (!filePath) {
+            root.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">🎬</div>
+                    <h1 class="empty-title">Nothing selected</h1>
+                    <p class="empty-desc">Go to the <a href="/" style="color:var(--amber)">Library</a> and pick a file to play.</p>
+                </div>`;
+            return;
+        }
+
         const ext = filePath.match(/\.[^.]+$/)?.[0]?.toLowerCase() ?? "";
         const isAudio = audioExts.has(ext);
 
-        // Fetch queue from the folder
         fetch(`/api/browse?path=${encodeURIComponent(queuePath)}`)
             .then((r) => r.json())
             .then(({ items }: { items: MediaItem[] }) => {
                 const mediaItems = items.filter((i) => i.type !== "directory");
-                renderPlayer(filePath, isAudio, mediaItems, ext);
+                renderPlayer(filePath, isAudio, mediaItems, ext, queuePath);
             })
             .catch(() => {
-                renderPlayer(filePath, isAudio, [], ext);
+                renderPlayer(filePath, isAudio, [], ext, queuePath);
             });
-    }
-
-    let currentPath = filePath;
-
-    function formatDuration(secs: number): string {
-        if (!isFinite(secs) || secs <= 0) return "—";
-        const h = Math.floor(secs / 3600);
-        const m = Math.floor((secs % 3600) / 60);
-        const s = Math.floor(secs % 60);
-        if (h > 0)
-            return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-        return `${m}:${String(s).padStart(2, "0")}`;
-    }
-
-    async function updateAudioMetadata(path: string) {
-        const metaRow = document.getElementById("audio-metadata-row");
-        const artImg = document.getElementById("album-art") as HTMLImageElement;
-        const descRow = document.getElementById("meta-description-row");
-        const descEl = document.getElementById("meta-description");
-
-        if (!metaRow || !artImg || !descEl || !descRow) return;
-
-        // Clean up first
-        metaRow.style.display = "none";
-        artImg.style.display = "none";
-        artImg.src = "";
-        descEl.innerHTML = "";
-        descRow.style.display = "none";
-
-        const ext = path.match(/\.[^.]+$/)?.[0]?.toLowerCase() ?? "";
-        const musicExts = [".mp3", ".m4a", ".flac", ".ogg", ".opus", ".wav"];
-        if (!musicExts.includes(ext)) return;
-
-        try {
-            const res = await fetch(
-                `/api/metadata?path=${encodeURIComponent(path)}`,
-            );
-            if (!res.ok) return;
-            const data = await res.json();
-
-            let hasArt = false;
-            let hasDesc = false;
-
-            if (data.hasArt) {
-                artImg.onerror = () => {
-                    artImg.style.display = "none";
-                };
-                artImg.src = `/api/album-art?path=${encodeURIComponent(path)}&t=${Date.now()}`;
-                artImg.style.display = "block";
-                hasArt = true;
-            } else {
-                artImg.style.display = "none";
-            }
-
-            if (data.comment) {
-                const commentText = Array.isArray(data.comment)
-                    ? data.comment.join("\n")
-                    : String(data.comment);
-                if (commentText.trim()) {
-                    descEl.textContent = commentText;
-                    descRow.style.display = "flex";
-                    hasDesc = true;
-                }
-            }
-
-            if (hasArt) {
-                metaRow.style.display = "flex";
-            }
-        } catch (e) {
-            console.warn("Metadata fetch failed", e);
-        }
     }
 
     function renderPlayer(
@@ -173,251 +125,170 @@ import Base from "../layouts/Base.astro";
         isAudio: boolean,
         queue: MediaItem[],
         currentExt: string,
+        queuePath: string,
     ) {
+        const root = document.getElementById("player-root");
+        if (!root) return;
+
         const name = fileName(path);
         const currentItem = queue.find((i) => i.path === path);
-        const mediaEl = isAudio
-            ? `<audio id="media-el" controls autoplay preload="metadata" src="${streamUrl(path)}" style="width:100%;min-height:60px;background:#000;border-radius:8px;"></audio>`
-            : `<video id="media-el" controls autoplay preload="metadata" src="${streamUrl(path)}" style="width:100%;max-height:75dvh;" playsinline></video>`;
-
         const queueHtml =
             queue.length > 0
                 ? `
-      <div class="player-sidebar fade-in fade-in-delay-3">
-        <div class="sidebar-header">Queue — ${queue.length} items</div>
-        <ul class="queue-list" id="queue-list" role="list">
-          ${queue
-              .map(
-                  (item) => `
-            <li class="queue-item${item.path === path ? " active" : ""}"
-                role="button"
-                tabindex="0"
-                aria-label="Play ${item.name}"
-                data-queue-path="${item.path}"
-                data-queue-ext="${item.ext ?? ""}"
-                data-queue-size="${item.size ?? ""}"
-                data-queue-audio="${audioExts.has(item.ext ?? "") ? "true" : "false"}">
-              <span class="queue-icon" aria-hidden="true">${typeIcon(item.type, item.ext)}</span>
-              <span class="queue-item-name">${item.name}</span>
-              ${item.size ? `<span class="queue-item-size">${formatSize(item.size)}</span>` : ""}
-            </li>
-          `,
-              )
-              .join("")}
-        </ul>
-      </div>
-    `
+            <div class="player-sidebar fade-in fade-in-delay-3">
+                <div class="sidebar-header">Queue — ${queue.length} items</div>
+                <ul class="queue-list" id="queue-list" role="list">
+                    ${queue
+                        .map(
+                            (item) => `
+                        <li class="queue-item${item.path === path ? " active" : ""}" role="button" tabindex="0" data-queue-path="${item.path}" data-queue-ext="${item.ext ?? ""}" data-queue-size="${item.size ?? ""}" data-queue-audio="${audioExts.has(item.ext ?? "") ? "true" : "false"}">
+                            <span class="queue-icon">${typeIcon(item.type, item.ext)}</span>
+                            <span class="queue-item-name">${item.name}</span>
+                            ${item.size ? `<span class="queue-item-size">${formatSize(item.size)}</span>` : ""}
+                        </li>`,
+                        )
+                        .join("")}
+                </ul>
+            </div>`
                 : "";
 
         root.innerHTML = `
-      <a href="/" class="breadcrumb" style="display:inline-flex;gap:6px;margin-bottom:24px;font-size:13px;">
-        <span class="breadcrumb-link">← Back to Library</span>
-      </a>
+            <a href="/" class="breadcrumb">← Back to Library</a>
+            <h1 class="now-playing-title fade-in">${name}</h1>
+            <div class="now-playing-meta fade-in fade-in-delay-1"><span>${currentExt.replace(".", "").toUpperCase()}</span></div>
+            <div class="player-layout fade-in fade-in-delay-2">
+                <div class="player-main">
+                    <div class="player-wrapper">
+                        <div id="audio-metadata-row" class="audio-metadata-row" style="display:none;">
+                            <div class="album-art-container"><img id="album-art" class="album-art" src="" alt="" style="display:none;" /></div>
+                        </div>
+                        <div id="player-media-target"></div>
+                    </div>
+                    <dl class="file-meta">
+                        <div class="file-meta-item"><dt>Format</dt><dd>${currentExt.replace(".", "").toUpperCase() || "—"}</dd></div>
+                        <div class="file-meta-item"><dt>Size</dt><dd>${currentItem?.size ? formatSize(currentItem.size) : "—"}</dd></div>
+                        <div class="file-meta-item"><dt>Duration</dt><dd id="meta-duration">—</dd></div>
+                        ${!isAudio ? `<div class="file-meta-item"><dt>Resolution</dt><dd id="meta-resolution">—</dd></div>` : ""}
+                        <div class="file-meta-item"><dt>Filename</dt><dd class="meta-filename">${name}</dd></div>
+                        <div class="file-meta-item" id="meta-description-row" style="display:none; flex: 1 1 100%;"><dt>Description</dt><dd id="meta-description" class="audio-description"></dd></div>
+                    </dl>
+                </div>
+                ${queueHtml}
+            </div>`;
 
-      <h1 class="now-playing-title fade-in">${name}</h1>
-      <div class="now-playing-meta fade-in fade-in-delay-1">
-        <span>${currentExt.replace(".", "").toUpperCase()}</span>
-      </div>
+        // Handle the persistent media el
+        const mediaEl = getMediaEl(isAudio);
+        const target = document.getElementById("player-media-target");
+        if (target) target.appendChild(mediaEl);
 
-      <div class="player-layout fade-in fade-in-delay-2">
-        <div class="player-main">
-          <div class="player-wrapper">
-            <div id="audio-metadata-row" class="audio-metadata-row" style="display:none;">
-              <div class="album-art-container">
-                <img id="album-art" class="album-art" src="" alt="Album Art" style="display:none;" />
-              </div>
-            </div>
-            ${mediaEl}
-          </div>
-          <dl class="file-meta" id="file-meta" aria-label="File metadata">
-            <div class="file-meta-item">
-              <dt>Format</dt>
-              <dd id="meta-format">${currentExt.replace(".", "").toUpperCase() || "—"}</dd>
-            </div>
-            <div class="file-meta-item">
-              <dt>Size</dt>
-              <dd id="meta-size">${currentItem?.size ? formatSize(currentItem.size) : "—"}</dd>
-            </div>
-            <div class="file-meta-item">
-              <dt>Duration</dt>
-              <dd id="meta-duration">—</dd>
-            </div>
-            ${
-                !isAudio
-                    ? `
-            <div class="file-meta-item">
-              <dt>Resolution</dt>
-              <dd id="meta-resolution">—</dd>
-            </div>`
-                    : ""
-            }
-            <div class="file-meta-item">
-              <dt>Filename</dt>
-              <dd id="meta-filename" class="meta-filename">${name}</dd>
-            </div>
-            <div class="file-meta-item" id="meta-description-row" style="display:none; flex: 1 1 100%;">
-              <dt>Description</dt>
-              <dd id="meta-description" class="audio-description"></dd>
-            </div>
-          </dl>
-        </div>
-        ${queueHtml}
-      </div>
-    `;
+        // Update source only if it's a different file
+        const newSrc = streamUrl(path);
+        if (mediaEl.src !== window.location.origin + newSrc) {
+            mediaEl.src = newSrc;
+            mediaEl.load();
+            mediaEl.play().catch(() => {});
+        }
 
-        attachQueueHandlers(path);
-        attachMediaMetaListener();
+        attachQueueHandlers(path, queuePath);
+        attachMediaMetaListener(mediaEl);
         updateAudioMetadata(path);
+        updateGlobalMiniPlayer(path, currentExt);
     }
 
-    function attachMediaMetaListener() {
-        const el = document.getElementById("media-el") as
-            | HTMLVideoElement
-            | HTMLAudioElement
-            | null;
-        if (!el) return;
+    function updateGlobalMiniPlayer(path: string, ext: string) {
+        const title = document.getElementById("mini-title");
+        const subtitle = document.getElementById("mini-subtitle");
+        const art = document.getElementById("mini-art") as HTMLImageElement;
 
+        if (title) title.textContent = fileName(path);
+        if (subtitle) subtitle.textContent = ext.replace(".", "").toUpperCase();
+        if (art) art.src = `/api/album-art?path=${encodeURIComponent(path)}`;
+    }
+
+    function attachMediaMetaListener(el: HTMLMediaElement) {
         const onMeta = () => {
             const durEl = document.getElementById("meta-duration");
-            if (durEl) durEl.textContent = formatDuration(el.duration);
-
-            if (el.tagName === "VIDEO") {
-                const resEl = document.getElementById("meta-resolution");
-                const vid = el as HTMLVideoElement;
-                if (resEl && vid.videoWidth && vid.videoHeight) {
-                    resEl.textContent = `${vid.videoWidth} × ${vid.videoHeight}`;
+            if (durEl) {
+                const secs = el.duration;
+                if (isFinite(secs) && secs > 0) {
+                    const h = Math.floor(secs / 3600),
+                        m = Math.floor((secs % 3600) / 60),
+                        s = Math.floor(secs % 60);
+                    durEl.textContent =
+                        h > 0
+                            ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+                            : `${m}:${String(s).padStart(2, "0")}`;
                 }
             }
+            if (el instanceof HTMLVideoElement) {
+                const resEl = document.getElementById("meta-resolution");
+                if (resEl && el.videoWidth)
+                    resEl.textContent = `${el.videoWidth} × ${el.videoHeight}`;
+            }
         };
-
         el.addEventListener("loadedmetadata", onMeta, { once: true });
-        // If metadata already loaded (cached)
         if (el.readyState >= 1) onMeta();
     }
 
-    const audioExts = new Set([
-        ".mp3",
-        ".flac",
-        ".aac",
-        ".ogg",
-        ".opus",
-        ".wav",
-        ".m4a",
-        ".wma",
-    ]);
+    async function updateAudioMetadata(path: string) {
+        const metaRow = document.getElementById("audio-metadata-row");
+        const artImg = document.getElementById("album-art") as HTMLImageElement;
+        const descRow = document.getElementById("meta-description-row");
+        const descEl = document.getElementById("meta-description");
+        if (!metaRow || !artImg || !descEl || !descRow) return;
 
-    function attachQueueHandlers(activePath: string) {
+        const musicExts = [".mp3", ".m4a", ".flac", ".ogg", ".opus", ".wav"];
+        if (
+            !musicExts.includes(
+                path.match(/\.[^.]+$/)?.[0]?.toLowerCase() ?? "",
+            )
+        )
+            return;
+
+        try {
+            const res = await fetch(
+                `/api/metadata?path=${encodeURIComponent(path)}`,
+            );
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.hasArt) {
+                artImg.src = `/api/album-art?path=${encodeURIComponent(path)}&t=${Date.now()}`;
+                artImg.style.display = "block";
+                metaRow.style.display = "flex";
+            }
+            if (data.comment) {
+                descEl.textContent = Array.isArray(data.comment)
+                    ? data.comment.join("\n")
+                    : String(data.comment);
+                descRow.style.display = "flex";
+            }
+        } catch {}
+    }
+
+    function attachQueueHandlers(activePath: string, queuePath: string) {
         const queueList = document.getElementById("queue-list");
         if (!queueList) return;
-
         queueList
             .querySelectorAll<HTMLElement>("[data-queue-path]")
             .forEach((el) => {
-                const clickHandler = () => {
+                el.addEventListener("click", () => {
                     const newPath = el.dataset.queuePath!;
-                    const isAudio = el.dataset.queueAudio === "true";
-
-                    // Update active state
-                    queueList
-                        .querySelectorAll(".queue-item")
-                        .forEach((qi) => qi.classList.remove("active"));
-                    el.classList.add("active");
-
-                    // Swap source without page reload
-                    const mediaEl = document.getElementById("media-el") as
-                        | HTMLVideoElement
-                        | HTMLAudioElement
-                        | null;
-                    if (mediaEl) {
-                        const newSrc = streamUrl(newPath);
-
-                        if (isAudio && mediaEl.tagName === "AUDIO") {
-                            mediaEl.src = newSrc;
-                            mediaEl.load();
-                            mediaEl.play().catch(() => {});
-                        } else if (!isAudio && mediaEl.tagName === "VIDEO") {
-                            mediaEl.src = newSrc;
-                            mediaEl.load();
-                            mediaEl.play().catch(() => {});
-                        } else {
-                            // Type changed — full re-render isn't required, just swap element
-                            const parent = mediaEl.parentElement!;
-                            const newEl = isAudio
-                                ? document.createElement("audio")
-                                : document.createElement("video");
-                            newEl.id = "media-el";
-                            newEl.controls = true;
-                            newEl.src = newSrc;
-                            newEl.style.width = "100%";
-                            if (!isAudio)
-                                (newEl as HTMLVideoElement).style.maxHeight =
-                                    "75dvh";
-                            newEl.setAttribute("preload", "metadata");
-                            newEl.setAttribute("playsinline", "");
-                            parent.replaceChild(newEl, mediaEl);
-                            newEl.play().catch(() => {});
-                        }
-
-                        // Update title
-                        const titleEl =
-                            document.querySelector(".now-playing-title");
-                        if (titleEl) titleEl.textContent = fileName(newPath);
-
-                        // Update URL without reload
-                        const ext =
-                            newPath.match(/\.[^.]+$/)?.[0]?.toLowerCase() ?? "";
-                        const metaEl =
-                            document.querySelector(".now-playing-meta");
-                        if (metaEl)
-                            metaEl.innerHTML = `<span>${ext.replace(".", "").toUpperCase()}</span>`;
-
-                        // Update static metadata fields
-                        const fmtEl = document.getElementById("meta-format");
-                        const sizeEl = document.getElementById("meta-size");
-                        const durEl = document.getElementById("meta-duration");
-                        const resEl =
-                            document.getElementById("meta-resolution");
-                        const fnEl = document.getElementById("meta-filename");
-
-                        if (fmtEl)
-                            fmtEl.textContent =
-                                ext.replace(".", "").toUpperCase() || "—";
-                        if (durEl) durEl.textContent = "—";
-                        if (resEl) resEl.textContent = "—";
-                        if (fnEl) fnEl.textContent = fileName(newPath);
-
-                        const sizeRaw = el.dataset.queueSize
-                            ? parseInt(el.dataset.queueSize, 10)
-                            : (el as HTMLElement & { dataset: DOMStringMap })
-                                  .dataset.queueSize;
-
-                        // Pull size from the queue item element we clicked
-                        const qSizeAttr = el.getAttribute("data-queue-size");
-                        if (sizeEl)
-                            sizeEl.textContent =
-                                qSizeAttr && qSizeAttr !== ""
-                                    ? formatSize(parseInt(qSizeAttr, 10))
-                                    : "—";
-
-                        window.history.replaceState(
-                            {},
-                            "",
-                            `/player?path=${encodeURIComponent(newPath)}&queue=${encodeURIComponent(queuePath)}`,
-                        );
-
-                        // Re-attach metadata listener after src swap
-                        attachMediaMetaListener();
-                        updateAudioMetadata(newPath);
-                    }
-                };
-
-                el.addEventListener("click", clickHandler);
-                el.addEventListener("keydown", (e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        clickHandler();
-                    }
+                    navigate(
+                        `/player?path=${encodeURIComponent(newPath)}&queue=${encodeURIComponent(queuePath)}`,
+                    );
                 });
             });
     }
+
+    // View Transitions lifecycle
+    document.addEventListener("astro:page-load", initPage);
+
+    document.addEventListener("astro:before-preparation", () => {
+        // Move media-el back to persistent slot before the swap
+        const mediaEl = document.getElementById("media-el");
+        const slot = document.getElementById("persistent-media-slot");
+        if (mediaEl && slot) {
+            slot.appendChild(mediaEl);
+        }
+    });
 </script>

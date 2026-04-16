@@ -685,3 +685,109 @@ button { cursor: pointer; background: none; border: none; font: inherit; color: 
   color: var(--amber-light);
   opacity: 0.8;
 }
+/* ── Persistent Player Root ────────────────────── */
+#persistent-player-root {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+#persistent-player-root .mini-player {
+  pointer-events: auto;
+}
+
+#persistent-media-slot {
+  display: none !important;
+}
+
+/* ── Mini Player ─────────────────────────────── */
+.mini-player {
+  height: 72px;
+  background: rgba(17, 17, 19, 0.95);
+  backdrop-filter: blur(20px) saturate(180%);
+  border-top: 1px solid var(--border-mid);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--gutter);
+  gap: 20px;
+  box-shadow: 0 -10px 40px rgba(0,0,0,0.5);
+  transition: transform 0.4s var(--ease-out);
+}
+
+.mini-player.hidden {
+  transform: translateY(100%);
+}
+
+.mini-art {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  background: var(--bg-elevated);
+}
+
+.mini-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.mini-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.mini-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mini-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mini-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 18px;
+  transition: all var(--dur-fast);
+}
+
+.mini-btn:hover {
+  background: var(--bg-hover);
+  color: var(--amber);
+}
+
+.mini-btn.play-pause {
+  background: var(--amber);
+  color: var(--bg-void);
+}
+
+.mini-btn.play-pause:hover {
+  transform: scale(1.1);
+  background: var(--amber-light);
+}
+
+/* Hide mini player on the player page itself */
+body.is-player-page .mini-player {
+  display: none;
+}
+

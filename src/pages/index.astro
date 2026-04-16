@@ -26,6 +26,8 @@ import Base from "../layouts/Base.astro";
 </Base>
 
 <script>
+	import { navigate } from "astro:transitions/client";
+
 	/* ============================================================
      Client-side library browser — fetches /api/browse?path=...
      and renders the media grid without full-page reloads.
@@ -42,11 +44,7 @@ import Base from "../layouts/Base.astro";
 		mtime?: number;
 	}
 
-	const content = document.getElementById("media-content")!;
-	const breadEl = document.getElementById("breadcrumb")!;
-	const subtitleEl = document.getElementById("dir-subtitle")!;
-
-	// ── Helpers ────────────────────────────────────────────────
+	// Helpers
 	function formatSize(bytes: number): string {
 		if (bytes < 1_048_576) return (bytes / 1_024).toFixed(1) + " KB";
 		if (bytes < 1_073_741_824)
@@ -57,7 +55,6 @@ import Base from "../layouts/Base.astro";
 	function typeIcon(type: MediaType, ext?: string): string {
 		if (type === "directory") return "📁";
 		if (type === "audio") return "🎵";
-		// Video icons by format
 		const icons: Record<string, string> = {
 			".mkv": "🎬",
 			".mp4": "🎞️",
@@ -73,51 +70,42 @@ import Base from "../layouts/Base.astro";
 			: type.charAt(0).toUpperCase() + type.slice(1);
 	}
 
-	// ── Navigate to a path ─────────────────────────────────────
-	async function navigate(path: string) {
-		// Push into history
-		const params = new URLSearchParams(window.location.search);
-		const current = params.get("path") ?? "";
-		if (path !== current) {
-			const newUrl = path ? `?path=${encodeURIComponent(path)}` : "/";
-			window.history.pushState({ path }, "", newUrl);
+	// Navigate to a library path (internal state) or player (page transition)
+	async function browse(path: string, pushState = true) {
+		const content = document.getElementById("media-content");
+		const breadEl = document.getElementById("breadcrumb");
+		const subtitleEl = document.getElementById("dir-subtitle");
+		if (!content || !breadEl || !subtitleEl) return;
+
+		if (pushState) {
+			const params = new URLSearchParams(window.location.search);
+			const current = params.get("path") ?? "";
+			if (path !== current) {
+				const newUrl = path ? `?path=${encodeURIComponent(path)}` : "/";
+				window.history.pushState({ path }, "", newUrl);
+			}
 		}
 
-		renderLoader();
-		renderBreadcrumb(path);
+		content.innerHTML = `<div class="loader" aria-live="polite"><span class="loader-dot"></span><span class="loader-dot"></span><span class="loader-dot"></span><span>Scanning…</span></div>`;
+
+		renderBreadcrumb(path, breadEl, subtitleEl);
 
 		try {
 			const res = await fetch(
 				`/api/browse?path=${encodeURIComponent(path)}`,
 			);
 			const data = (await res.json()) as { items: MediaItem[] };
-			renderGrid(data.items, path);
+			renderGrid(data.items, path, content);
 		} catch {
-			renderError();
+			content.innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><h2 class="empty-title">Could not load media</h2><p class="empty-desc">Make sure a <code>media/</code> folder exists next to the project and is readable.</p></div>`;
 		}
 	}
 
-	// ── Renderers ──────────────────────────────────────────────
-	function renderLoader() {
-		content.innerHTML = `
-      <div class="loader" aria-live="polite">
-        <span class="loader-dot"></span>
-        <span class="loader-dot"></span>
-        <span class="loader-dot"></span>
-        <span>Scanning…</span>
-      </div>`;
-	}
-
-	function renderError() {
-		content.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">⚠️</div>
-        <h2 class="empty-title">Could not load media</h2>
-        <p class="empty-desc">Make sure a <code>media/</code> folder exists next to the project and is readable.</p>
-      </div>`;
-	}
-
-	function renderBreadcrumb(path: string) {
+	function renderBreadcrumb(
+		path: string,
+		breadEl: HTMLElement,
+		subtitleEl: HTMLElement,
+	) {
 		const parts = path.split("/").filter(Boolean);
 		const crumbs = [
 			{ name: "Home", path: "" },
@@ -130,13 +118,9 @@ import Base from "../layouts/Base.astro";
 		breadEl.innerHTML = crumbs
 			.map((c, i) => {
 				const isLast = i === crumbs.length - 1;
-				if (isLast && i > 0) {
+				if (isLast && i > 0)
 					return `<span class="breadcrumb-current">${c.name}</span>`;
-				}
-				return `
-        <a class="breadcrumb-link" href="#" data-path="${c.path}">${c.name}</a>
-        ${!isLast ? '<span class="breadcrumb-sep" aria-hidden="true">›</span>' : ""}
-      `;
+				return `<a class="breadcrumb-link" href="#" data-path="${c.path}">${c.name}</a>${!isLast ? '<span class="breadcrumb-sep" aria-hidden="true">›</span>' : ""}`;
 			})
 			.join("");
 
@@ -145,84 +129,60 @@ import Base from "../layouts/Base.astro";
 			.forEach((a) => {
 				a.addEventListener("click", (e) => {
 					e.preventDefault();
-					navigate(a.dataset.path ?? "");
+					browse(a.dataset.path ?? "");
 				});
 			});
 
-		// Update subtitle
-		const label = parts.length ? parts[parts.length - 1] : "All media";
-		subtitleEl.textContent = label;
+		subtitleEl.textContent = parts.length
+			? parts[parts.length - 1]
+			: "All media";
 	}
 
-	function renderGrid(items: MediaItem[], currentPath: string) {
+	function renderGrid(
+		items: MediaItem[],
+		currentPath: string,
+		content: HTMLElement,
+	) {
 		if (!items.length) {
-			content.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">🎞️</div>
-          <h2 class="empty-title">Nothing here yet</h2>
-          <p class="empty-desc">Drop videos, music, or folders into the <code>media/</code> directory and refresh.</p>
-        </div>`;
+			content.innerHTML = `<div class="empty-state"><div class="empty-icon">🎞️</div><h2 class="empty-title">Nothing here yet</h2><p class="empty-desc">Drop videos, music, or folders into the <code>media/</code> directory and refresh.</p></div>`;
 			return;
 		}
 
-		const dirs = items.filter((i) => i.type === "directory");
-		const videos = items.filter((i) => i.type === "video");
-		const audios = items.filter((i) => i.type === "audio");
+		const sections = [
+			{
+				label: "Folders",
+				items: items.filter((i) => i.type === "directory"),
+			},
+			{ label: "Videos", items: items.filter((i) => i.type === "video") },
+			{ label: "Music", items: items.filter((i) => i.type === "audio") },
+		];
 
-		let html = "";
+		content.innerHTML = sections
+			.filter((s) => s.items.length)
+			.map(
+				(s) => `
+			<div class="section-header" style="margin-top: 32px;">
+				<span class="section-title">${s.label}</span><span class="section-line"></span><span class="section-count">${s.items.length}</span>
+			</div>
+			<ul class="media-grid" role="list">${s.items.map(card).join("")}</ul>
+		`,
+			)
+			.join("");
 
-		if (dirs.length) {
-			html += sectionHeader("Folders", dirs.length);
-			html += `<ul class="media-grid" role="list">${dirs.map(card).join("")}</ul>`;
-		}
-
-		if (videos.length) {
-			html += sectionHeader("Videos", videos.length);
-			html += `<ul class="media-grid" role="list">${videos.map(card).join("")}</ul>`;
-		}
-
-		if (audios.length) {
-			html += sectionHeader("Music", audios.length);
-			html += `<ul class="media-grid" role="list">${audios.map(card).join("")}</ul>`;
-		}
-
-		content.innerHTML = html;
-
-		// Attach click handlers
 		content
 			.querySelectorAll<HTMLElement>("[data-item-path]")
 			.forEach((el) => {
 				el.addEventListener("click", () => {
 					const itemPath = el.dataset.itemPath!;
 					const itemType = el.dataset.itemType as MediaType;
-
 					if (itemType === "directory") {
-						navigate(itemPath);
+						browse(itemPath);
 					} else {
-						// Navigate to player with the full folder context for the queue
-						const queuePath = currentPath;
-						const playerUrl = `/player?path=${encodeURIComponent(itemPath)}&queue=${encodeURIComponent(queuePath)}`;
-						window.location.href = playerUrl;
-					}
-				});
-
-				el.addEventListener("keydown", (e) => {
-					if (e.key === "Enter" || e.key === " ") {
-						e.preventDefault();
-						el.click();
+						const playerUrl = `/player?path=${encodeURIComponent(itemPath)}&queue=${encodeURIComponent(currentPath)}`;
+						navigate(playerUrl);
 					}
 				});
 			});
-	}
-
-	function sectionHeader(label: string, count: number): string {
-		return `
-      <div class="section-header" style="margin-top: 32px;">
-        <span class="section-title">${label}</span>
-        <span class="section-line" aria-hidden="true"></span>
-        <span class="section-count">${count}</span>
-      </div>
-    `;
 	}
 
 	function card(item: MediaItem): string {
@@ -230,53 +190,33 @@ import Base from "../layouts/Base.astro";
 		const label = typeLabel(item.type);
 		const sizeStr = item.size ? formatSize(item.size) : "";
 		const extStr = item.ext ? item.ext.replace(".", "").toUpperCase() : "";
-
 		let thumbContent = `<span aria-hidden="true">${icon}</span>`;
 
-		if (item.type === "audio") {
+		if (item.type !== "directory") {
 			const artUrl = `/api/album-art?path=${encodeURIComponent(item.path)}&t=${item.mtime ?? ""}`;
 			thumbContent = `
-        <img src="${artUrl}" 
-             alt="" 
-             class="card-art" 
-             loading="lazy" 
-             style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity 0.3s;" 
-             onload="this.style.opacity='1'; this.nextElementSibling.style.opacity='0';" />
-        <span aria-hidden="true" style="transition:opacity 0.3s;">${icon}</span>
-      `;
+				<img src="${artUrl}" alt="" class="card-art" loading="lazy" style="position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity 0.3s;" onload="this.style.opacity='1'; this.nextElementSibling.style.opacity='0';" />
+				<span aria-hidden="true" style="transition:opacity 0.3s;">${icon}</span>
+			`;
 		}
 
-		return `
-      <li class="media-card"
-          role="button"
-          tabindex="0"
-          aria-label="${item.name} — ${label}"
-          data-item-path="${item.path}"
-          data-item-type="${item.type}">
-        <div class="card-thumb">
-          ${thumbContent}
-          <span class="type-badge ${item.type}">${label}</span>
-        </div>
-        <div class="card-body">
-          <span class="card-name">${item.name}</span>
-          <div class="card-meta">
-            ${extStr ? `<span>${extStr}</span><span class="dot">·</span>` : ""}
-            ${sizeStr ? `<span>${sizeStr}</span>` : ""}
-          </div>
-        </div>
-      </li>
-    `;
+		return `<li class="media-card" role="button" tabindex="0" data-item-path="${item.path}" data-item-type="${item.type}">
+			<div class="card-thumb">${thumbContent}<span class="type-badge ${item.type}">${label}</span></div>
+			<div class="card-body"><span class="card-name">${item.name}</span><div class="card-meta">${extStr ? `<span>${extStr}</span><span class="dot">·</span>` : ""}${sizeStr ? `<span>${sizeStr}</span>` : ""}</div></div>
+		</li>`;
 	}
 
-	// ── Boot ────────────────────────────────────────────────────
-	function getCurrentPath(): string {
-		const params = new URLSearchParams(window.location.search);
-		return params.get("path") ?? "";
+	function init() {
+		if (document.getElementById("media-content")) {
+			const params = new URLSearchParams(window.location.search);
+			browse(params.get("path") ?? "", false);
+		}
 	}
 
+	document.addEventListener("astro:page-load", init);
 	window.addEventListener("popstate", (e) => {
-		navigate((e.state as { path?: string })?.path ?? "");
+		if (window.location.pathname === "/") {
+			browse((e.state as { path?: string })?.path ?? "", false);
+		}
 	});
-
-	navigate(getCurrentPath());
 </script>

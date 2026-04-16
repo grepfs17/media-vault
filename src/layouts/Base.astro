@@ -1,0 +1,50 @@
+---
+interface Props {
+    title?: string;
+    description?: string;
+}
+const { title = "Media Vault", description = "Your personal media library" } =
+    Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="description" content={description} />
+        <title>{title}</title>
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+        <!-- Fonts -->
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Manrope:wght@300;400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+
+        <link rel="stylesheet" href="/styles/global.css" />
+    </head>
+    <body>
+        <header class="site-header">
+            <a href="/" class="logo" aria-label="Media Vault Home">
+                <span class="logo-icon">⬡</span>
+                <span class="logo-text">Media<em>Vault</em></span>
+            </a>
+
+            <nav class="header-nav" aria-label="Main navigation">
+                <a href="/" class="nav-link">Library</a>
+                <a href="/player" class="nav-link">Now Playing</a>
+            </nav>
+        </header>
+
+        <main id="main-content">
+            <slot />
+        </main>
+
+        <footer class="site-footer">
+            <span>Media Vault &mdash; local media server</span>
+        </footer>
+    </body>
+</html>

@@ -49,14 +49,14 @@ const { title = "Media Vault", description = "Your personal media library" } =
             <div id="persistent-media-slot"></div>
             <div id="persistent-mini-player" class="mini-player hidden">
                 <img id="mini-art" class="mini-art" src="/favicon.svg" alt="" />
-                <div class="mini-info">
+                <a href="/player" id="mini-link" class="mini-info">
                     <span id="mini-title" class="mini-title"
                         >Nothing playing</span
                     >
                     <span id="mini-subtitle" class="mini-subtitle"
                         >Media Vault</span
                     >
-                </div>
+                </a>
                 <div class="mini-controls">
                     <button
                         id="mini-play-pause"

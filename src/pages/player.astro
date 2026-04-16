@@ -192,17 +192,31 @@ import Base from "../layouts/Base.astro";
         attachQueueHandlers(path, queuePath);
         attachMediaMetaListener(mediaEl);
         updateAudioMetadata(path);
-        updateGlobalMiniPlayer(path, currentExt);
+        updateGlobalMiniPlayer(path, currentExt, queuePath);
     }
 
-    function updateGlobalMiniPlayer(path: string, ext: string) {
+    function updateGlobalMiniPlayer(
+        path: string,
+        ext: string,
+        queuePath: string,
+    ) {
         const title = document.getElementById("mini-title");
         const subtitle = document.getElementById("mini-subtitle");
         const art = document.getElementById("mini-art") as HTMLImageElement;
+        const miniLink = document.getElementById(
+            "mini-link",
+        ) as HTMLAnchorElement;
+        const expandBtn = document.getElementById(
+            "mini-expand",
+        ) as HTMLAnchorElement;
 
         if (title) title.textContent = fileName(path);
         if (subtitle) subtitle.textContent = ext.replace(".", "").toUpperCase();
         if (art) art.src = `/api/album-art?path=${encodeURIComponent(path)}`;
+
+        const playerUrl = `/player?path=${encodeURIComponent(path)}&queue=${encodeURIComponent(queuePath)}`;
+        if (miniLink) miniLink.href = playerUrl;
+        if (expandBtn) expandBtn.href = playerUrl;
     }
 
     function attachMediaMetaListener(el: HTMLMediaElement) {

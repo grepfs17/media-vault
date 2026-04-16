@@ -25,3 +25,4 @@ pnpm-debug.log*
 media/
 .agents/
 *-lock.json
+ecosystem.config.cjs

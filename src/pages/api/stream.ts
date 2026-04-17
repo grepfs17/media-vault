@@ -4,7 +4,7 @@ import { Readable } from 'node:stream';
 import { extname } from 'node:path';
 import { subPathToFs, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from '../../lib/media';
 
-const CHUNK_SIZE = 1024 * 1024; // 1 MB — low memory footprint for 4 GB RAM
+const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB — better balance for performance vs memory
 
 const MIME: Record<string, string> = {
     '.mp4': 'video/mp4',

@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { createReadStream, statSync, existsSync } from 'node:fs';
+import { Readable } from 'node:stream';
 import { extname } from 'node:path';
 import { subPathToFs, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from '../../lib/media';
 
@@ -75,51 +76,32 @@ export const GET: APIRoute = async ({ url, request }) => {
 
         const chunkLength = end - start + 1;
 
-        // Node.js Readable → Web ReadableStream bridge
         const nodeStream = createReadStream(fsPath, { start, end });
-        const webStream = new ReadableStream({
-            start(controller) {
-                nodeStream.on('data', (chunk) => controller.enqueue(chunk));
-                nodeStream.on('end', () => controller.close());
-                nodeStream.on('error', (err) => controller.error(err));
-            },
-            cancel() {
-                nodeStream.destroy();
-            },
-        });
+        const webStream = Readable.toWeb(nodeStream);
 
-        return new Response(webStream, {
+        return new Response(webStream as any, {
             status: 206,
             headers: {
                 'Content-Type': mimeType,
                 'Content-Length': String(chunkLength),
                 'Content-Range': `bytes ${start}-${end}/${fileSize}`,
                 'Accept-Ranges': 'bytes',
-                'Cache-Control': 'no-store',
+                'Cache-Control': 'public, max-age=300',
             },
         });
     }
 
     // No Range — stream the whole file (browser will request ranges afterward)
     const nodeStream = createReadStream(fsPath);
-    const webStream = new ReadableStream({
-        start(controller) {
-            nodeStream.on('data', (chunk) => controller.enqueue(chunk));
-            nodeStream.on('end', () => controller.close());
-            nodeStream.on('error', (err) => controller.error(err));
-        },
-        cancel() {
-            nodeStream.destroy();
-        },
-    });
+    const webStream = Readable.toWeb(nodeStream);
 
-    return new Response(webStream, {
+    return new Response(webStream as any, {
         status: 200,
         headers: {
             'Content-Type': mimeType,
             'Content-Length': String(fileSize),
             'Accept-Ranges': 'bytes',
-            'Cache-Control': 'no-store',
+            'Cache-Control': 'public, max-age=300',
         },
     });
 };

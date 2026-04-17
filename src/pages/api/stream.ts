@@ -4,7 +4,7 @@ import { Readable } from 'node:stream';
 import { extname } from 'node:path';
 import { subPathToFs, VIDEO_EXTENSIONS, AUDIO_EXTENSIONS } from '../../lib/media';
 
-const CHUNK_SIZE = 8 * 1024 * 1024; // 8 MB — better balance for performance vs memory
+
 
 const MIME: Record<string, string> = {
     '.mp4': 'video/mp4',
@@ -65,7 +65,7 @@ export const GET: APIRoute = async ({ url, request }) => {
         const rawEnd = match[2] ? parseInt(match[2], 10) : fileSize - 1;
 
         const start = rawStart;
-        const end = Math.min(rawEnd, start + CHUNK_SIZE - 1, fileSize - 1);
+        const end = rawEnd;
 
         if (start >= fileSize) {
             return new Response('Range Not Satisfiable', {
@@ -76,7 +76,11 @@ export const GET: APIRoute = async ({ url, request }) => {
 
         const chunkLength = end - start + 1;
 
-        const nodeStream = createReadStream(fsPath, { start, end });
+        const nodeStream = createReadStream(fsPath, {
+            start,
+            end,
+            highWaterMark: 512 * 1024 // 512KB internal buffer for smoother I/O
+        });
         const webStream = Readable.toWeb(nodeStream);
 
         return new Response(webStream as any, {
@@ -92,7 +96,7 @@ export const GET: APIRoute = async ({ url, request }) => {
     }
 
     // No Range — stream the whole file (browser will request ranges afterward)
-    const nodeStream = createReadStream(fsPath);
+    const nodeStream = createReadStream(fsPath, { highWaterMark: 512 * 1024 });
     const webStream = Readable.toWeb(nodeStream);
 
     return new Response(webStream as any, {
